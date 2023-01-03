@@ -1,0 +1,268 @@
+---
+title: "finalprojectqtm151summer"
+author: "Catherine Haus"
+date: "8/1/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(plotly)
+library(dplyr)
+library(forcats)
+library(tidyverse)
+library(shiny)
+```
+
+```{r}
+#We want to investigate 2 questions: 
+#1) how is region associated with the number of reported COVID-19 cases, AND
+#2) how is stance on mask usage associated with the subsequent number of cases in a given area?
+
+#Import the data-set. Source: NY Times COVID-19 Master Data-Set: College Data-Set.
+college<-read.csv('https://raw.githubusercontent.com/nytimes/covid-19-data/master/colleges/colleges.csv')
+
+#Explore the college data-set.
+head(college)
+str(college)
+```
+
+```{r}
+#Create a summary of case numbers by state.
+state_summary <- college %>%
+  group_by(state) %>%
+  summarise(cases=mean(cases, na.rm = T))
+#View the summary of case numbers by state.
+state_summary
+```
+
+```{r}
+#Create a graph displaying case numbers by state. This is pretty messy, so we will tidy it up.
+ggplot(state_summary, aes(x=cases, y=state)) +
+  geom_point()
+```
+
+```{r}
+#Using fct_infreq, we can create an ordered plot that appears much cleaner; however, we still need to clean up the legend. 
+college %>%
+  mutate(state = fct_infreq(state)) %>%
+  ggplot(aes(state)) +
+    geom_bar()
+```
+
+```{r}
+#Create a visualization that groups states by regions.
+college %>%
+  drop_na(cases) %>%
+  drop_na(state) %>%
+  mutate(statebyregion = fct_collapse(state,
+    "Northeast" = c("Connecticut", "Maine", "Massachusetts", "New Hampshire", "Rhode Island", "Vermont", "New York", "Pennsylvania", "New Jersey", "Delaware"),
+    "South" = c("Arkansas", "Louisiana", "Oklahoma", "Texas", "Alabama", "Kentucky", "Mississippi", "Tennessee", "Washington, D.C.", "Florida", "Georgia", "Maryland", "North Carolina", "South Carolina", "West Virginia", "Virginia"),
+    "Midwest" = c("Indiana", "Illinois", "Michigan", "Ohio", "Wisconsin", "Iowa", "Nebraska", "Kansas", "North Dakota", "Minnesota", "South Dakota", "Missouri"),
+    "West" = "Arizona", "Colorado", "Idaho", "New Mexico", "Montana", "Utah", "Nevada", "Wyoming", "Alaska", "California", "Hawaii", "Oregon", "Washington")) %>%    
+  group_by(statebyregion) %>%
+  summarise(meancases = mean(cases)) %>%
+ggplot(aes(x=meancases, 
+             y=fct_reorder(statebyregion, meancases), col=factor(statebyregion))) +
+  geom_point(aes(size = meancases))
+```
+
+```{r}
+#Create a summary of 2021 case numbers by state.
+state_2021_summary <- college %>%
+  group_by(state) %>%
+  summarise(cases_2021=mean(cases_2021, na.rm = T))
+#View the summary of 2021 case numbers by state. These values appear to be lower and less comprehensive than the values in the case variable. When examining information about the NY Times data set, authors outline that 'cases' include all cases between 2020-2021 that were recorded as data points; furthermore, 'cases_2021' include all cases recorded as data points after January 1st, 2021. For this reason, we will rely on the 'cases' variable. 
+state_2021_summary
+```
+
+```{r}
+#Repeat the same visualization process for cases in 2021 by region (states and territories in the U.S.).
+college %>%
+  drop_na(cases_2021) %>%
+  drop_na(state) %>%
+  mutate(statebyregion = fct_collapse(state,
+    "Northeast" = c("Connecticut", "Maine", "Massachusetts", "New Hampshire", "Rhode Island", "Vermont", "New York", "Pennsylvania", "New Jersey", "Delaware"),
+    "South" = c("Arkansas", "Louisiana", "Oklahoma", "Texas", "Alabama", "Kentucky", "Mississippi", "Tennessee", "Washington, D.C.", "Florida", "Georgia", "Maryland", "North Carolina", "South Carolina", "West Virginia", "Virginia"),
+    "Midwest" = c("Indiana", "Illinois", "Michigan", "Ohio", "Wisconsin", "Iowa", "Nebraska", "Kansas", "North Dakota", "Minnesota", "South Dakota", "Missouri"),
+    "West" = "Arizona", "Colorado", "Idaho", "New Mexico", "Montana", "Utah", "Nevada", "Wyoming", "Alaska", "California", "Hawaii", "Oregon", "Washington")) %>%    
+  group_by(statebyregion) %>%
+  summarise(meancases2021 = mean(cases_2021)) %>%
+ggplot(aes(x=meancases2021, 
+             y=fct_reorder(statebyregion, meancases2021), col=factor(statebyregion))) +
+  geom_point(aes(size = meancases2021))
+#This graph changes the order of regions most affected by COVID-19 case numbers. Here, we see the Midwest underneath the South and Northeast. West is still the region most affected, which makes sense given it reported the highest number of cases between 2020-2021. Because we believe the 'cases' variable to be more representative than the 'cases_2021' variable, we will proceed using the 'cases' variable for the remainder of our analysis; however, it's important to compare both using visualizations and note the differences.
+```
+
+```{r}
+#Create a Shiny Web App:
+ui <- fluidPage(
+  #Create an interactive COVID-19 geography explorer.
+  titlePanel("COVID-19 Geography Explorer: Cities & Colleges"),
+  sidebarLayout(
+    #Prompt users to enter a city name. Set the default to Atlanta.
+    sidebarPanel(textInput('city', 'Enter City', 'Atlanta')),
+    mainPanel(tabsetPanel(tabPanel("Plot", plotOutput('plotcases')))
+  )
+  )
+)
+server <- function(input, output, session) {
+  output$plotcases <- renderPlot({
+    ggplot(subset(college, city == input$city)) +
+      #Plot city by cases of COVID-19.
+      #Color the points according to college and set size according to number of cases.
+    geom_point(aes(x = city, y = cases, color = college, size = cases))
+  })
+}
+shinyApp(ui = ui, server = server)
+```
+
+```{r}
+#Create an interactive plot_ly visualization that allows users to investigate case numbers by city.
+plot_ly(college, x = ~city, y = ~cases, type = "scatter", mode = "markers", color = ~state) %>%
+  add_markers()
+```
+
+```{r}
+#Create an interactive plot_ly visualization that allows users to investigate case numbers by county.
+plot_ly(college, x = ~county, y = ~cases, type = "scatter", mode = "markers", color = ~state) %>%
+  add_markers()
+```
+
+```{r}
+#Create a Shiny Web App w/ Plotly:
+ui <- fluidPage(
+  #Create an interactive COVID-19 geography explorer.
+  titlePanel("COVID-19 Geography Explorer: County Data"),
+  sidebarLayout(
+    #Prompt users to enter a county name. Set the default to Dekalb county
+    sidebarPanel(textInput('county', 'Enter County', 'Dekalb')),
+    mainPanel(tabsetPanel(tabPanel("Plot", plotlyOutput('plotcases')),
+                          tabPanel("Table", tableOutput('tablecases')))
+  )
+  )
+)
+server <- function(input, output, session) {
+  output$plotcases <- renderPlotly({
+    plot_ly(college, x=~input$county, y=~cases, type = 'scatter', mode = 'markers')
+  })
+  #Display a table with total number of cases. This will allow for comparison between number of cases per county vs. total number of cases. 
+  output$tablecases <- renderTable({
+    sum(college$cases)
+  })
+}
+shinyApp(ui = ui, server = server)
+```
+
+```{r}
+#Import the masks dataset from the NY Times research page on Github:
+masks<-read.csv('https://raw.githubusercontent.com/nytimes/covid-19-data/master/mask-use/mask-use-by-county.csv', header = TRUE)
+
+#Explore the head of the data-set:
+head(masks)
+```
+
+```{r}
+#Import the FIPS_county_state CSV file, derived from the USDA, which is the source that NY Times used to obtain the data for their "COUNTYFP" column in the 'masks' data-set. Here is the link to the USDA source: https://www.nrcs.usda.gov/wps/portal/nrcs/detail/national/home/?cid=nrcs143_013697
+FIPS_county<-read.csv('FIPS_county_state.csv', header = TRUE)
+
+#Explore the FIPS_county dataset, which we will merge the 'masks' dataset with. 
+head(FIPS_county)
+str(FIPS_county)
+```
+
+```{r}
+#Join the FIPS_county data-set with the masks data-set. We will specify the verb 'inner' for our join in order to retain only matching observations (when it comes to the COUNTYFP column).
+masks_county <- masks %>%
+  full_join(FIPS_county, by = c("COUNTYFP"))
+
+#Explore the head of the combined data-sets (i.e. 'tables'). It appears the join was successful.
+head(masks_county)
+```
+
+```{r}
+#By using sum(is.na(masks_county$Name)), we noticed that 9 rows have NA values in Name column
+#Using head(subset(masks_county, is.na(masks_county$Name))) the rows were checked. The Name and State, both are missing for these rows but there is data in all the columns pertaining to Masks dataset.
+#Let's remove these rows
+row.contains.na <- apply(masks_county, 1, function(x){any(is.na(x))}) #sum(row.contains.na)
+masks_county <- masks_county[!row.contains.na,]
+
+#Explore the head of the combined data-sets (i.e. 'tables').
+head(masks_county)
+
+#Note to Professor----Hridansh completed this chunk of code.
+```
+
+
+```{r}
+#Usage of masks based on the survey
+S_N<-mean(masks_county$NEVER)
+S_R<-mean(masks_county$RARELY)
+S_S<-mean(masks_county$SOMETIMES)
+S_F<-mean(masks_county$FREQUENTLY)
+S_A<-mean(masks_county$ALWAYS)
+
+survey<-c(S_N,S_R,S_S,S_F,S_A)
+labels<-c("NEVER", "RARELY", "SOMETIMES", "FREQUENTLY", "ALWAYS")
+pie_percent<-round(survey/sum(survey),3)
+pie_labels<-paste0((survey))
+pie(survey,labels=pie_percent, col=rainbow(length(survey)),main = "Usage of Masks")
+legend("topright",c("NEVER", "RARELY", "SOMETIMES", "FREQUENTLY", "ALWAYS"),cex=0.8, fill=rainbow(length(survey)))
+
+#Note to Professor----Hridansh completed this chunk of code.
+```
+
+```{r}
+#Rename the 'Name' column in our new data-set, masks_county, so that we can join it with the college data-set.
+names(masks_county)[7] <- 'county'
+
+#Let's examine the newly named colum to ensure we can proceed with joining masks_county to the college data-set. It looks good!
+head(masks_county)
+```
+
+```{r}
+#Let's remove the state column from our masks_county data-set. This will avoid any errors when joining it to our college data-set.
+masks_college_nostate <- subset(masks_county, select = -State)
+
+#Create a new data-set that combines our mask data and college data. 
+masks_college<- masks_college_nostate %>%
+  inner_join(college, by = c('county'))
+
+#Let's examine the join. It appears successful, as the state column does not appear to contain errors.
+head(masks_college)
+```
+
+```{r}
+#Let's continue tidying up the data-set. We want to remove the ipeds_id column as it only proves the colleges in our data-set are nationally registered. It is not needed for this analysis.
+masks_college2 <- subset(masks_college, select = -ipeds_id)
+
+#To make sure removal was successful, let's explore the head of the masks_college2 data-set. It appears correct.
+head(masks_college2)
+```
+
+```{r}
+#As stated earlier, we will be focusing on total case numbers rather than 2021 cases for the remainder of our analysis. Let's remove this column as well.
+masks_college3 <- subset(masks_college2, select = -cases_2021)
+
+#Explore the head of the data. Removal of the cases_2021 column appears successful.
+head(masks_college3)
+
+#Now, to finish up tidying the data, we will remove the notes column. Although the notes are helpful, it does not contain any information we need to perform further analysis.
+masks_college_cases <- subset(masks_college3, select = -notes)
+
+#Explore the head of the masks_college_cases data-set. From there, we will perform our analysis and create visualizations. 
+head(masks_college_cases)
+```
+
+```{r}
+#Let's create visualizations with our new data-set: masks_college_cases. We will first use plot_ly to eye-ball if there is a relationship or association between a state reporting 'frequent' mask usage and the number of cases reported in that state.
+plot_ly(masks_college_cases, x = ~state, y = ~cases, type = "scatter", mode = "markers", color = ~FREQUENTLY) %>%
+  add_markers()
+```
+
+```{r}
+#Create a plot_ly visualization that allows us to investigate the association between case numbers in a state and reportedly never wearing masks. The states with low case numbers but high tendency not to wear masks appear to have lower populations, which is something useful to look into if further analysis is conducted on the topic.
+plot_ly(masks_college_cases, x = ~state, y = ~cases, type = "scatter", mode = "markers", color = ~NEVER) %>%
+  add_markers()
+```
+
